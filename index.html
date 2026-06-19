@@ -137,6 +137,7 @@ button:disabled{opacity:0.5;cursor:not-allowed}
         <div style="font-size:13px;color:var(--text2)" id="cc-phone"></div>
       </div>
       <div style="margin-left:auto;text-align:right">
+        <div style="font-size:11px;color:var(--text2)" id="cc-card-label">Card #1</div>
         <div style="font-size:28px;font-weight:700;color:#1D9E75" id="cc-count">0</div>
         <div style="font-size:11px;color:var(--text2)">/ 10 stamps</div>
       </div>
@@ -299,9 +300,14 @@ button:disabled{opacity:0.5;cursor:not-allowed}
     <div class="card" id="detail-card" style="display:none">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
         <div class="st" style="margin:0" id="d-name"></div>
-        <button onclick="redeemGift()" style="font-size:13px;background:#1D9E75;color:#fff;border-color:#1D9E75">
-          <i class="ti ti-gift"></i> Redeem gift
-        </button>
+        <div style="display:flex;gap:8px">
+          <button onclick="redeemGift()" style="font-size:13px;background:#1D9E75;color:#fff;border-color:#1D9E75">
+            <i class="ti ti-gift"></i> Redeem gift
+          </button>
+          <button id="newcard-btn" onclick="issueNewCard()" style="font-size:13px;display:none">
+            <i class="ti ti-refresh"></i> New card
+          </button>
+        </div>
       </div>
       <div id="d-phone" style="font-size:13px;color:var(--text2);margin-bottom:.75rem"></div>
       <div class="prog"><div class="pf" id="d-prog"></div></div>
@@ -330,6 +336,9 @@ const OCOLS   = ['#E1F5EE','#EEEDFE','#E6F1FB'];
 const OFG     = ['#0F6E56','#3C3489','#185FA5'];
 const SEG = 3;
 const ARC = 2 * Math.PI / SEG;
+
+function curStamps(t) { t=Number(t); return t%10===0&&t>0 ? 10 : t%10; }
+function cardNum(t)   { t=Number(t); return t===0 ? 1 : Math.ceil(t/10); }
 
 // ── STATE ───────────────────────────────────────────────────────────────────
 let custCache    = [];
@@ -409,16 +418,19 @@ function rBadge(stamps, s, el) {
 }
 
 function showCustCard(c) {
-  document.getElementById('cust-card').style.display = 'block';
-  document.getElementById('cc-av').textContent    = inits(c.name);
-  document.getElementById('cc-name').textContent  = c.name;
-  document.getElementById('cc-phone').textContent = c.phone;
-  document.getElementById('cc-count').textContent = c.stamps;
-  document.getElementById('cc-prog').style.width  = (c.stamps / 10 * 100) + '%';
-  stampGrid(Number(c.stamps), document.getElementById('cc-stamps'));
-  rBadge(c.stamps, 1,  document.getElementById('r1'));
-  rBadge(c.stamps, 5,  document.getElementById('r5'));
-  rBadge(c.stamps, 10, document.getElementById('r10'));
+  const cs = curStamps(c.stamps);
+  const cn = cardNum(c.stamps);
+  document.getElementById('cust-card').style.display  = 'block';
+  document.getElementById('cc-av').textContent        = inits(c.name);
+  document.getElementById('cc-name').textContent      = c.name;
+  document.getElementById('cc-phone').textContent     = c.phone;
+  document.getElementById('cc-card-label').textContent = `Card #${cn}`;
+  document.getElementById('cc-count').textContent     = cs;
+  document.getElementById('cc-prog').style.width      = (cs / 10 * 100) + '%';
+  stampGrid(cs, document.getElementById('cc-stamps'));
+  rBadge(cs, 1,  document.getElementById('r1'));
+  rBadge(cs, 5,  document.getElementById('r5'));
+  rBadge(cs, 10, document.getElementById('r10'));
 }
 
 // ── PIN ───────────────────────────────────────────────────────────────────────
@@ -516,8 +528,9 @@ async function processQR(data) {
   usedQRs.push(nonce); saveQRs();
   const prev = r.stamps - r.added;
   showCustCard({ name: r.name || phone, phone, stamps: r.stamps, redeemed: r.redeemed || {} });
-  showAlert('scan-alert', `${r.added} stamp${r.added > 1 ? 's' : ''} added at ${outlet} — you now have ${r.stamps}/10!`, 'ok');
-  if (prev < 1 && r.stamps >= 1) setTimeout(showWheel, 1000);
+  const cs = curStamps(r.stamps);
+  showAlert('scan-alert', `${r.added} stamp${r.added > 1 ? 's' : ''} added at ${outlet} — Card #${cardNum(r.stamps)}, stamp ${cs}/10!`, 'ok');
+  if (Math.floor((prev-1)/10) < Math.floor((r.stamps-1)/10)) setTimeout(showWheel, 1000);
 }
 
 // ── MANUAL LOOKUP ─────────────────────────────────────────────────────────────
@@ -574,8 +587,7 @@ async function generateQR() {
   const r = await api({ action:'getCustomer', phone });
   loading('qr-loading', false);
   document.getElementById('qr-btn').disabled = false;
-  if (r.error)         { showAlert('qr-alert', 'Customer not found. Register them first.', 'err'); return; }
-  if (r.stamps >= 10)  { showAlert('qr-alert', `${r.name}'s card is full (10/10). Please issue a new card.`, 'warn'); return; }
+  if (r.error) { showAlert('qr-alert', 'Customer not found. Register them first.', 'err'); return; }
   qrExpiry = Date.now() + (5 * 60 * 1000);
   const nonce      = Math.random().toString(36).slice(2) + Date.now().toString(36);
   const outletName = OUTLETS[selectedOutlet];
@@ -624,11 +636,11 @@ function renderList() {
         <div class="av">${inits(c.name)}</div>
         <div style="flex:1">
           <div style="font-size:14px;font-weight:500;color:var(--text)">${c.name}</div>
-          <div style="font-size:12px;color:var(--text2)">${c.phone}</div>
-          <div class="prog" style="width:120px"><div class="pf" style="width:${Number(c.stamps)/10*100}%"></div></div>
+          <div style="font-size:12px;color:var(--text2)">${c.phone} · Card #${cardNum(c.stamps)}</div>
+          <div class="prog" style="width:120px"><div class="pf" style="width:${curStamps(c.stamps)/10*100}%"></div></div>
         </div>
       </div>
-      <span class="badge ${Number(c.stamps) >= 10 ? 'ba' : 'bg'}">${c.stamps}/10</span>
+      <span class="badge ${curStamps(c.stamps)===10?'ba':'bg'}">${curStamps(c.stamps)}/10</span>
     </div>
   `).join('');
 }
@@ -638,13 +650,15 @@ function showDetail(phone) {
   const c = custCache.find(x => String(x.phone) === String(phone));
   if (!c) return;
   selectedCust = c;
+  const cs = curStamps(c.stamps);
+  const cn = cardNum(c.stamps);
   document.getElementById('detail-card').style.display = 'block';
   document.getElementById('d-name').textContent  = c.name;
-  document.getElementById('d-phone').textContent = c.phone;
-  document.getElementById('d-prog').style.width  = (Number(c.stamps) / 10 * 100) + '%';
-  stampGrid(Number(c.stamps), document.getElementById('d-stamps'));
+  document.getElementById('d-phone').textContent = `${c.phone} · Card #${cn} · ${c.stamps} total stamps`;
+  document.getElementById('d-prog').style.width  = (cs / 10 * 100) + '%';
+  stampGrid(cs, document.getElementById('d-stamps'));
   document.getElementById('d-gifts').innerHTML = Object.entries(REWARDS).map(([s, g]) => {
-    const earned = Number(c.stamps) >= parseInt(s);
+    const earned = cs >= parseInt(s);
     const red    = c.redeemed && (c.redeemed[s] === true || c.redeemed[s] === 'true' || c.redeemed[s] === 'TRUE');
     const bg = s==='1' ? '#E1F5EE' : s==='5' ? '#FAEEDA' : '#E6F1FB';
     const fg = s==='1' ? '#0F6E56' : s==='5' ? '#854F0B' : '#185FA5';
@@ -654,7 +668,22 @@ function showDetail(phone) {
       <span class="badge ${red ? 'bgr' : earned ? 'bg' : 'bgr'}">${red ? 'Redeemed' : earned ? 'Ready' : 'Locked'}</span>
     </div>`;
   }).join('');
+  document.getElementById('newcard-btn').style.display = 'none';
   document.getElementById('detail-card').scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+async function issueNewCard() {
+  if (!selectedCust) return;
+  const c = selectedCust;
+  if (!confirm(`Issue a new rewards card for ${c.name}? Their current stamps and gifts will be reset.`)) return;
+  loading('redeem-loading', true);
+  const r = await api({ action:'resetCard', phone: c.phone });
+  loading('redeem-loading', false);
+  if (r.error) { showAlert('d-alert', 'Error: ' + r.error, 'err'); return; }
+  c.stamps = 0; c.redeemed = {};
+  showAlert('d-alert', `New card issued for ${c.name}. Starting fresh from 0 stamps.`, 'ok');
+  showDetail(c.phone);
+  renderList();
 }
 
 async function redeemGift() {
